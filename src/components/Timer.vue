@@ -1,200 +1,168 @@
 <script setup>
 import { Icon } from "@iconify/vue";
-import { ref, onUnmounted, computed } from 'vue'
-import alarm from '@/assests/alarm.mp3';
-import { useTasks } from '@/composables/useTasks';
+import { ref, onUnmounted } from "vue";
+import alarm from "@/assests/alarm.mp3";
+import { useTasks } from "@/composables/useTasks";
+
 const { tasks, decrementPomodoro } = useTasks();
-const showForm = ref(false);
+
 const alarmSound = new Audio(alarm);
-alarmSound.preload = 'auto';
-const activeTab = ref('default')
-const activeTime = ref('Pomodoro');
-const time = ref(25 * 60);
-const clocks = ref([]);
-const defaultTime = {
-    name: 'Default',
-    Pomodoro: 25 * 60,
-    shortBreak: 5 * 60,
-    longBreak: 15 * 60,
-    activeTab: 'Pomodoro',
-    start: false,
-    intervalId: null,
-};
-clocks.value.push(defaultTime);
-const CustomTime = ref({
-    name: '',
-    Pomodoro: '',
-    shortBreak: '',
-    longBreak: '',
+alarmSound.preload = "auto";
 
-}); {
-
-};
-const pomodoro = ref(25 * 60);
-const shortBreak = ref(5 * 60);
-const longBreak = ref(15 * 60);
-const start = ref(false);
-const intervalId = ref(null);
-
-const pomodoroCount = ref(0);
-
+const showForm = ref(false);
 const optionAutoNext = ref(false);
-const AutoNext = ref('false');
+const autoNextEnabled = ref(false); // true/false instead of string
 
+// Each clock has its own independent state
+const clocks = ref([
+    {
+        name: "Default",
+        Pomodoro: 25 * 60,
+        shortBreak: 5 * 60,
+        longBreak: 15 * 60,
+        activeTab: "Pomodoro",
+        currentTime: 25 * 60, // current countdown time
+        start: false,
+        intervalId: null,
+        pomodoroCount: 0, // tracks completed pomodoros for long break logic
+    },
+]);
 
-const formattedTime = (time) => {
-    const minutes = Math.floor(time / 60).toString().padStart(2, '0');
-    const seconds = (time % 60).toString().padStart(2, '0');
-    return `${minutes}:${seconds}`;
+const CustomTime = ref({
+    name: "",
+    Pomodoro: "",
+    shortBreak: "",
+    longBreak: "",
+});
+
+const formattedTime = (seconds) => {
+    const minutes = Math.floor(seconds / 60)
+        .toString()
+        .padStart(2, "0");
+    const secs = (seconds % 60).toString().padStart(2, "0");
+    return `${minutes}:${secs}`;
 };
+
 const askTime = () => {
     showForm.value = true;
 };
 
 const saveCustomTime = () => {
-    showForm.value = false;
+    if (
+        !CustomTime.value.name ||
+        !CustomTime.value.Pomodoro ||
+        !CustomTime.value.shortBreak ||
+        !CustomTime.value.longBreak
+    ) {
+        alert("Please fill all fields");
+        return;
+    }
+
     const newClock = {
         name: CustomTime.value.name,
         Pomodoro: CustomTime.value.Pomodoro * 60,
         shortBreak: CustomTime.value.shortBreak * 60,
         longBreak: CustomTime.value.longBreak * 60,
-        activeTab: 'Pomodoro',
+        activeTab: "Pomodoro",
+        currentTime: CustomTime.value.Pomodoro * 60,
         start: false,
-    }
+        intervalId: null,
+        pomodoroCount: 0,
+    };
+
     clocks.value.push(newClock);
+    showForm.value = false;
+
     // Reset form
-    CustomTime.value.name = '';
-    CustomTime.value.Pomodoro = '';
-    CustomTime.value.shortBreak = '';
-    CustomTime.value.longBreak = '';
+    CustomTime.value = {
+        name: "",
+        Pomodoro: "",
+        shortBreak: "",
+        longBreak: "",
+    };
 };
 
-const toggleStart = (clockName) => {
-    clocks.value.forEach(clock => {
-        if (clock.name === clockName) {
-            if (clock.start) {
-                clock.start = false;
-                pauseCountDown(clockName);
-            } else {
-                startCountDown(clockName);
-                clock.start = true;
-            }
+// yesle for the specific clock sets the selected tab like when we click on tabs
+const setTab = (clock, tab) => {
+    if (clock.start) {
+        clearInterval(clock.intervalId);
+        clock.intervalId = null;
+        clock.start = false;
+    }
+    clock.activeTab = tab;
+    clock.currentTime = clock[tab];
+};
+
+// this starts the countdown for the specific clock
+const startCountdown = (clock) => {
+    if (clock.intervalId) return; // already running
+
+    clock.start = true;
+    clock.intervalId = setInterval(() => {
+        if (clock.currentTime > 0) {
+            clock.currentTime -= 1;
+        } else {
+            // Timer finished
+            alarmSound.play();
+            clearInterval(clock.intervalId);
+            clock.intervalId = null;
+            clock.start = false;
+
+            setTimeout(() => {
+                alarmSound.pause();
+                alarmSound.currentTime = 0;
+            }, 5000);
+
+            nextPhase(clock);
         }
-    });
+    }, 1000);
 };
 
-const defaultPomodoro = () => {
-    activeTab.value = 'default';
-    pomodoro.value = defaultTime.Pomodoro;
-    shortBreak.value = defaultTime.shortBreak;
-    longBreak.value = defaultTime.longBreak;
-    time.value = pomodoro.value;
-};
-
-const startCountDown = (clockName) => {
-    clocks.value.forEach(clock => {
-        if (clock.name === clockName) {
-            if (clock.activeTab === 'Pomodoro') {
-                time.value = clock.Pomodoro;
-                activeTime.value = 'Pomodoro';
-            } else if (clock.activeTab === 'shortBreak') {
-                time.value = clock.shortBreak;
-                activeTime.value = 'shortBreak';
-            } else if (clock.activeTab === 'longBreak') {
-                time.value = clock.longBreak;
-                activeTime.value = 'longBreak';
-            }
-            if (clock.intervalId) return;
-            clock.start = true;
-            clock.intervalId = setInterval(() => {
-                if (time.value > 0) {
-                    time.value -= 1;
-                } else {
-                    alarmSound.play();
-                    setTimeout(() => {
-                        alarmSound.pause()
-                        alarmSound.currentTime = 0
-                        autoNextCountdown(clockName);
-                    }, 5000)
-                    next();
-                    pauseCountDown(clockName);
-                }
-            }, 1000);
-        }
-    });
-};
-
-const pauseCountDown = () => {
-    clearInterval(intervalId.value);
-    intervalId.value = null;
-    start.value = false;
-
-};
-
-const PomodoroTab = (clockName) => {
-    clocks.value.forEach(clock => {
-        if (clock.name === clockName) {
-            pauseCountDown(clockName);
-            clock.activeTab = 'Pomodoro';
-        }
-    });
-};
-
-const shortBreakTab = (clockName) => {
-    clocks.value.forEach(clock => {
-        if (clock.name === clockName) {
-            pauseCountDown(clockName);
-            clock.activeTab = 'shortBreak';
-        }
-    });
-};
-
-const longBreakTab = (clockName) => {
-    clocks.value.forEach(clock => {
-        if (clock.name === clockName) {
-            pauseCountDown(clockName);
-            clock.activeTab = 'longBreak';
-        }
-    });
-};
-
-const resetTimer = (clockName) => {
-    clocks.value.forEach(clock => {
-        if (clock.name === clockName) {
-            pauseCountDown(clockName);
-            if (clock.activeTab === 'Pomodoro') {
-                time.value = clock.Pomodoro;
-            } else if (clock.activeTab === 'shortBreak') {
-                time.value = clock.shortBreak;
-            } else if (clock.activeTab === 'longBreak') {
-                time.value = clock.longBreak;
-            }
-        }
-    });
-
-
-    if (activeTime.value === 'Pomodoro') {
-        time.value = pomodoro.value;
-    } else if (activeTime.value === 'shortBreak') {
-        time.value = shortBreak.value;
-    } else if (activeTime.value === 'longBreak') {
-        time.value = longBreak.value;
+// this just toggles the start state of the clock,
+// ani also clears hamro interval id
+const toggleStart = (clock) => {
+    if (clock.start) {
+        clearInterval(clock.intervalId);
+        clock.intervalId = null;
+        clock.start = false;
+    } else {
+        startCountdown(clock);
     }
 };
 
-const next = () => {
-    if (activeTime.value === 'Pomodoro') {
-        pomodoroCount.value += 1;
+// resets the timer and clears the interval id
+// sets the current time to the active tab's duration
+const resetTimer = (clock) => {
+    clearInterval(clock.intervalId);
+    clock.intervalId = null;
+    clock.start = false;
+    clock.currentTime = clock[clock.activeTab];
+};
+
+// this  checks for the pomodoro count and then changes the tabs and or finishes the pomodoro timer
+const nextPhase = (clock) => {
+    if (clock.activeTab === "Pomodoro") {
+        clock.pomodoroCount += 1;
+
+        // Update task if exists
         if (tasks.value.length > 0) {
             decrementPomodoro(0);
         }
-        if (pomodoroCount.value % 4 === 0) {
-            longBreakTab();
+
+        // Every 4 pomodoros → long break, else short break
+        if (clock.pomodoroCount % 4 === 0) {
+            setTab(clock, "longBreak");
         } else {
-            shortBreakTab();
+            setTab(clock, "shortBreak");
         }
     } else {
-        PomodoroTab();
+        // From break → back to Pomodoro
+        setTab(clock, "Pomodoro");
+    }
+
+    // Auto-start next phase if enabled
+    if (autoNextEnabled.value) {
+        startCountdown(clock);
     }
 };
 
@@ -206,89 +174,135 @@ const cancelAutoNext = () => {
     optionAutoNext.value = false;
 };
 
-const autoNextCountdown = () => {
-    if (AutoNext.value === 'true') {
-        startCountDown();
-    }
-};
-
+// Cleanup all intervals on component unmount
 onUnmounted(() => {
-    clearInterval(intervalId.value)
-})
-
-
+    clocks.value.forEach((clock) => {
+        if (clock.intervalId) clearInterval(clock.intervalId);
+    });
+});
 </script>
+
 <template>
     <div class="page">
-
         <div class="autonext">
             <button @click="showAutoNextOption">Auto Next Option</button>
             <button @click="askTime">Add Another Clock</button>
         </div>
+
         <div class="timer-grid">
-            <div class="timer" v-for="clock in clocks" :key="clock.name">
+            <div v-for="clock in clocks" :key="clock.name" class="timer">
                 <div class="selection">
-                    <p :class="{ active: activeTab === 'default' }" @click="defaultPomodoro">
-                        {{ clock.name }}
-                    </p>
-
-
+                    <p>{{ clock.name }}</p>
                 </div>
+
                 <div class="time">
                     <ul>
-                        <li :class="{ active: clock.activeTab === 'Pomodoro' }" @click="PomodoroTab(clock.name)">
+                        <li
+                            :class="{ active: clock.activeTab === 'Pomodoro' }"
+                            @click="setTab(clock, 'Pomodoro')"
+                        >
                             Pomodoro
                         </li>
-                        <li :class="{ active: clock.activeTab === 'shortBreak' }" @click="shortBreakTab(clock.name)">
-                            shortBreak</li>
-                        <li :class="{ active: clock.activeTab === 'longBreak' }" @click="longBreakTab(clock.name)">
-                            longBreak</li>
+                        <li
+                            :class="{
+                                active: clock.activeTab === 'shortBreak',
+                            }"
+                            @click="setTab(clock, 'shortBreak')"
+                        >
+                            Short Break
+                        </li>
+                        <li
+                            :class="{ active: clock.activeTab === 'longBreak' }"
+                            @click="setTab(clock, 'longBreak')"
+                        >
+                            Long Break
+                        </li>
                     </ul>
                 </div>
+
                 <div class="time-value">
-                    {{ formattedTime(clock[clock.activeTab]) }}
+                    {{ formattedTime(clock.currentTime) }}
                 </div>
+
                 <div class="options">
-                    <div class="reset" @click="resetTimer(clock.name)">
+                    <div class="reset" @click="resetTimer(clock)">
                         <Icon icon="tabler:reload" width="24" height="24" />
                     </div>
-                    <div class="start" @click="toggleStart(clock.name)">
-                        <p v-if="!clock.start">Start</p>
-                        <p v-else>Pause</p>
+                    <div class="start" @click="toggleStart(clock)">
+                        <p>{{ clock.start ? "Pause" : "Start" }}</p>
                     </div>
-                    <div class="next" @click="next(clock.name)">
-                        <Icon icon="tabler:player-track-next-filled" width="24" height="24" />
-
+                    <div class="next" @click="nextPhase(clock)">
+                        <Icon
+                            icon="tabler:player-track-next-filled"
+                            width="24"
+                            height="24"
+                        />
                     </div>
                 </div>
             </div>
         </div>
-    </div>
-    <div v-if="showForm" class="modal-overlay">
-        <div class="modal">
-            <form @submit.prevent="saveCustomTime">
-                <input type="text" v-model="CustomTime.name" placeholder="Enter Clock Name" />
-                <input type="number" class="no-spinner" v-model="CustomTime.Pomodoro"
-                    placeholder="Enter Pomodoro(minute)" />
-                <input type="number" class="no-spinner" v-model="CustomTime.shortBreak"
-                    placeholder="Enter shortBreak(minute)" />
-                <input type="number" class="no-spinner" v-model="CustomTime.longBreak"
-                    placeholder="Enter longBreak(minute)" />
-                <button type="submit">Save</button>
-            </form>
+
+        <!-- Add Custom Clock Modal -->
+        <div v-if="showForm" class="modal-overlay" @click="showForm = false">
+            <div class="modal" @click.stop>
+                <form @submit.prevent="saveCustomTime">
+                    <input
+                        type="text"
+                        v-model="CustomTime.name"
+                        placeholder="Enter Clock Name"
+                        required
+                    />
+                    <input
+                        type="number"
+                        class="no-spinner"
+                        v-model.number="CustomTime.Pomodoro"
+                        placeholder="Pomodoro (minutes)"
+                        min="1"
+                        required
+                    />
+                    <input
+                        type="number"
+                        class="no-spinner"
+                        v-model.number="CustomTime.shortBreak"
+                        placeholder="Short Break (minutes)"
+                        min="1"
+                        required
+                    />
+                    <input
+                        type="number"
+                        class="no-spinner"
+                        v-model.number="CustomTime.longBreak"
+                        placeholder="Long Break (minutes)"
+                        min="1"
+                        required
+                    />
+                    <button type="submit">Save</button>
+                </form>
+            </div>
         </div>
-    </div>
-    <div v-if="optionAutoNext" class="modal-overlay">
-        <div class="modal">
-            <form>
-                <select name="autoNextOption" id="autoNextOption" v-model="AutoNext">
-                    <option value="true">Enable Auto Next</option>
-                    <option value="false">Disable Auto Next</option>
-                </select>
-                <div class="buttons">
-                    <button class="auto-cancel" @click="cancelAutoNext">Close</button>
-                </div>
-            </form>
+
+        <!-- Auto Next Option Modal -->
+        <div
+            v-if="optionAutoNext"
+            class="modal-overlay"
+            @click="optionAutoNext = false"
+        >
+            <div class="modal" @click.stop>
+                <form>
+                    <select v-model="autoNextEnabled">
+                        <option :value="true">Enable Auto Next</option>
+                        <option :value="false">Disable Auto Next</option>
+                    </select>
+                    <div class="buttons">
+                        <button
+                            class="auto-cancel"
+                            @click="optionAutoNext = false"
+                        >
+                            Close
+                        </button>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 </template>
@@ -344,7 +358,6 @@ onUnmounted(() => {
 }
 
 .timer-grid:has(.timer:only-child) .timer {
-
     max-width: 900px;
     margin: auto;
 }
@@ -438,7 +451,7 @@ onUnmounted(() => {
     display: flex;
     flex-direction: column;
     gap: 15px;
-    font-family: 'Roboto Condensed', sans-serif;
+    font-family: "Roboto Condensed", sans-serif;
 }
 
 .modal input {

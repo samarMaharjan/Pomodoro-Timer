@@ -170,9 +170,6 @@ const showAutoNextOption = () => {
     optionAutoNext.value = true;
 };
 
-const cancelAutoNext = () => {
-    optionAutoNext.value = false;
-};
 
 // Cleanup all intervals on component unmount
 onUnmounted(() => {

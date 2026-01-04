@@ -7,9 +7,7 @@ const { tasks, decrementPomodoro } = useTasks();
 const showForm = ref(false);
 const alarmSound = new Audio(alarm);
 alarmSound.preload = 'auto';
-const activeTab = ref('default')
 const activeTime = ref('Pomodoro');
-const time = ref(25 * 60);
 const clocks = ref([]);
 const defaultTime = {
     name: 'Default',
@@ -19,6 +17,7 @@ const defaultTime = {
     activeTab: 'Pomodoro',
     start: false,
     intervalId: null,
+    time: 25 * 60,
 };
 clocks.value.push(defaultTime);
 const CustomTime = ref({
@@ -30,11 +29,6 @@ const CustomTime = ref({
 }); {
 
 };
-const pomodoro = ref(25 * 60);
-const shortBreak = ref(5 * 60);
-const longBreak = ref(15 * 60);
-const start = ref(false);
-const intervalId = ref(null);
 
 const pomodoroCount = ref(0);
 
@@ -47,6 +41,7 @@ const formattedTime = (time) => {
     const seconds = (time % 60).toString().padStart(2, '0');
     return `${minutes}:${seconds}`;
 };
+
 const askTime = () => {
     showForm.value = true;
 };
@@ -60,9 +55,10 @@ const saveCustomTime = () => {
         longBreak: CustomTime.value.longBreak * 60,
         activeTab: 'Pomodoro',
         start: false,
+        intervalId: null,
+        time: newClock.Pomodoro,
     }
     clocks.value.push(newClock);
-    // Reset form
     CustomTime.value.name = '';
     CustomTime.value.Pomodoro = '';
     CustomTime.value.shortBreak = '';
@@ -83,25 +79,17 @@ const toggleStart = (clockName) => {
     });
 };
 
-const defaultPomodoro = () => {
-    activeTab.value = 'default';
-    pomodoro.value = defaultTime.Pomodoro;
-    shortBreak.value = defaultTime.shortBreak;
-    longBreak.value = defaultTime.longBreak;
-    time.value = pomodoro.value;
-};
+
 
 const startCountDown = (clockName) => {
     clocks.value.forEach(clock => {
         if (clock.name === clockName) {
             if (clock.activeTab === 'Pomodoro') {
-                time.value = clock.Pomodoro;
                 activeTime.value = 'Pomodoro';
+                clock.time = clock.Pomodoro;
             } else if (clock.activeTab === 'shortBreak') {
-                time.value = clock.shortBreak;
                 activeTime.value = 'shortBreak';
             } else if (clock.activeTab === 'longBreak') {
-                time.value = clock.longBreak;
                 activeTime.value = 'longBreak';
             }
             if (clock.intervalId) return;
@@ -124,10 +112,15 @@ const startCountDown = (clockName) => {
     });
 };
 
-const pauseCountDown = () => {
-    clearInterval(intervalId.value);
-    intervalId.value = null;
-    start.value = false;
+const pauseCountDown = (clockName) => {
+    clocks.value.forEach(clock => {
+        if (clock.name === clockName) {
+            clearInterval(clock.intervalId);
+            clock.intervalId = null;
+            clock.start = false;
+        }
+    });
+
 
 };
 
@@ -136,6 +129,7 @@ const PomodoroTab = (clockName) => {
         if (clock.name === clockName) {
             pauseCountDown(clockName);
             clock.activeTab = 'Pomodoro';
+            clock.time = clock.Pomodoro;
         }
     });
 };
@@ -145,6 +139,7 @@ const shortBreakTab = (clockName) => {
         if (clock.name === clockName) {
             pauseCountDown(clockName);
             clock.activeTab = 'shortBreak';
+            clock.time = clock.shortBreak;
         }
     });
 };
@@ -154,6 +149,7 @@ const longBreakTab = (clockName) => {
         if (clock.name === clockName) {
             pauseCountDown(clockName);
             clock.activeTab = 'longBreak';
+            clock.time = clock.longBreak;
         }
     });
 };
@@ -213,7 +209,9 @@ const autoNextCountdown = () => {
 };
 
 onUnmounted(() => {
-    clearInterval(intervalId.value)
+    clocks.value.forEach(clock => {
+        clearInterval(clock.intervalId)
+    })
 })
 
 
@@ -228,7 +226,7 @@ onUnmounted(() => {
         <div class="timer-grid">
             <div class="timer" v-for="clock in clocks" :key="clock.name">
                 <div class="selection">
-                    <p :class="{ active: activeTab === 'default' }" @click="defaultPomodoro">
+                    <p>
                         {{ clock.name }}
                     </p>
 
@@ -246,7 +244,7 @@ onUnmounted(() => {
                     </ul>
                 </div>
                 <div class="time-value">
-                    {{ formattedTime(clock[clock.activeTab]) }}
+                    {{ formattedTime(clock.time) }}     
                 </div>
                 <div class="options">
                     <div class="reset" @click="resetTimer(clock.name)">
